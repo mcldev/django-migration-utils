@@ -1,0 +1,8 @@
+# Include the license file
+include LICENSE
+include README.md
+
+# Include the data files
+# recursive-include django_migration_utils/static *
+
+
