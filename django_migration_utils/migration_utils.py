@@ -52,7 +52,7 @@ def check_table_exists(cursor, table_name):
 #     }
 # }
 
-def convert_value_mapping(apps, field_name, value_mapping, new_value, old_data_row):
+def convert_value_mapping(apps, new_model_inst, field_name, value_mapping, new_value, old_data_row):
     if not (value_mapping and field_name and field_name in value_mapping):
         return new_value
 
@@ -64,12 +64,15 @@ def convert_value_mapping(apps, field_name, value_mapping, new_value, old_data_r
         val_or_func = value_mapping[field_name][None]
         if callable(val_or_func):
             try:
-                new_value = val_or_func(new_value, apps, old_data_row)
+                new_value = val_or_func(apps, new_model_inst, new_value, old_data_row)
             except:
                 try:
-                    new_value = val_or_func(new_value, apps)
+                    new_value = val_or_func(new_value, apps, old_data_row)
                 except:
-                    new_value = val_or_func(new_value)
+                    try:
+                        new_value = val_or_func(new_value, apps)
+                    except:
+                        new_value = val_or_func(new_value)
         else:
             # Default value if not in mapping table e.g. False or 0 or... > 'default'
             new_value = val_or_func
@@ -85,10 +88,12 @@ def add_fields_to_model(apps, model_inst, data_row, fields_to_migrate, old_value
             new_value = data_row[old_field]
 
         # Map Values to Old/New Value mapping
-        new_value = convert_value_mapping(apps, old_field, old_value_mapping, new_value, data_row)
-        new_value = convert_value_mapping(apps, new_field, new_value_mapping, new_value, data_row)
+        new_value = convert_value_mapping(apps, model_inst, old_field, old_value_mapping, new_value, data_row)
+        new_value = convert_value_mapping(apps, model_inst, new_field, new_value_mapping, new_value, data_row)
 
-        setattr(model_inst, new_field, new_value)
+        if new_value is not None:
+            setattr(model_inst, new_field, new_value)
+
     return model_inst
 
 
