@@ -1,5 +1,4 @@
-from django.db import connection
-
+from django.db import connection, transaction
 
 def get_cursor():
     return connection.cursor()
@@ -18,7 +17,8 @@ def fetch_rows_as_dict(cursor=None, table_name=None):
 
 def remove_all_rows(table_name, cursor=None):
     cursor = cursor or get_cursor()
-    cursor.execute("DELETE FROM ONLY %s" % table_name)
+    cursor.execute(f"DELETE FROM ONLY {table_name}")
+    update_indexes(table_name, 1)  # reset the auto id counts
 
 
 def remove_table(table_name, cursor=None):
@@ -31,8 +31,12 @@ def remove_tables(tables, cursor=None):
 
 
 # Need to reset indexes when copying over primary keys for postgres.
-def update_indexes(cursor, table_name):
-    cursor.execute("SELECT setval('%s_id_seq', (SELECT MAX(id) FROM %s)+1)" % (table_name, table_name))
+def update_indexes(table_name, cursor=None, reset_to_value=None):
+    cursor = cursor or get_cursor()
+    if reset_to_value is not None:
+        cursor.execute(f"SELECT setval('{table_name}_id_seq', {reset_to_value})")
+    else:
+        cursor.execute(f"SELECT setval('{table_name}_id_seq', (SELECT MAX(id) FROM {table_name}) + 1)")
 
 
 def check_table_exists(cursor, table_name):
@@ -195,3 +199,68 @@ def migrate_cms_plugin(apps, old_table, new_app, new_model, new_plugin_type, fie
 
         # Save new plugin
         new_plugin.save()
+
+
+# Provide an update mapping dictionary to migrate from one table to another
+# MAPPING_TABLE = [
+#     {
+#         "old_table": 'auth_group',
+#         "new_app": 'auth',
+#         "new_model": 'group',
+#         "fields_to_migrate": [('id', 'id'),
+#                               ('name', 'name'),
+#                               ],
+#         "old_value_mapping": None,
+#         "new_value_mapping": None,
+#     }, ...
+def map_fields_from_table(apps, schema_editor, mapping_table, exclude_ids=[], source_cursor=None, overwrite_existing=False):
+    source_cursor = source_cursor or get_cursor()
+    ret_new_models = []
+    ret_existing_models = []
+    for mapping in mapping_table:
+        with transaction.atomic():  # Set each table as atomic, so on error only correct tables are ok
+            NewModel, new_models = convert_old_table_to_new_models(apps=apps,
+                                                                   old_table=mapping['old_table'],
+                                                                   new_app=mapping['new_app'],
+                                                                   new_model=mapping['new_model'],
+                                                                   fields_to_migrate=mapping['fields_to_migrate'],
+                                                                   old_value_mapping=mapping['old_value_mapping'],
+                                                                   new_value_mapping=mapping['new_value_mapping'],
+                                                                   cursor=source_cursor)
+            if new_models:
+                # Filter if required
+                if any(exclude_ids):
+                    new_models = [nm for nm in new_models if nm.id not in exclude_ids]
+
+                # Get new/update models
+                existing_ids = NewModel.objects.all().values_list('id', flat=True)
+                new_models = [nm for nm in new_models if nm.id not in existing_ids]
+                existing_models = [nm for nm in new_models if nm.id in existing_ids]
+
+                # Create New Models
+                NewModel.objects.bulk_create(new_models)
+
+                # Overwrite Existing Models if required
+                if overwrite_existing:
+                    update_fields = [f[1] for f in fields_to_migrate]
+                    NewModel.objects.bulk_update(existing_models, update_fields)
+
+                # Update Postgres indexes (auto id) for each table
+                update_indexes(NewModel.objects.model._meta.db_table)
+
+                ret_new_models += new_models
+                ret_existing_models += existing_models
+
+    return ret_new_models, ret_existing_models
+
+
+def reverse_mapping_remove_all_rows(apps, schema_editor, mapping_table, cursor=None):
+    cursor = cursor or get_cursor()
+    for mapping in reversed(mapping_table):
+        with transaction.atomic():
+            new_app = mapping['new_app']
+            new_model = mapping['new_model']
+            print(f'Removing all rows from {new_app}:{new_model}')
+            NewModel = apps.get_model(new_app, new_model)
+            table_name = NewModel.objects.model._meta.db_table
+            remove_all_rows(table_name)
