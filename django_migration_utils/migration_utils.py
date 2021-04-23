@@ -18,7 +18,7 @@ def fetch_rows_as_dict(cursor=None, table_name=None):
 def remove_all_rows(table_name, cursor=None):
     cursor = cursor or get_cursor()
     cursor.execute(f"DELETE FROM ONLY {table_name}")
-    update_indexes(table_name, 1)  # reset the auto id counts
+    update_indexes(table_name, cursor, 1)  # reset the auto id counts
 
 
 def remove_table(table_name, cursor=None):
