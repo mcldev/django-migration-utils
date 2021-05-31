@@ -213,13 +213,12 @@ def migrate_cms_plugin(apps, old_table, new_app, new_model, new_plugin_type, fie
 #         "old_value_mapping": None,
 #         "new_value_mapping": None,
 #     }, ...
-def map_fields_from_table(apps, schema_editor, mapping_table, exclude_ids=[], source_cursor=None, overwrite_existing=False):
+def map_fields_from_table(apps, schema_editor, mapping_table, source_cursor=None, overwrite_existing=False):
     source_cursor = source_cursor or get_cursor()
-    ret_new_models = []
-    ret_existing_models = []
+    new_existing_models = {}
     for mapping in mapping_table:
         with transaction.atomic():  # Set each table as atomic, so on error only correct tables are ok
-            NewModel, new_models = convert_old_table_to_new_models(apps=apps,
+            NewModel, model_instances = convert_old_table_to_new_models(apps=apps,
                                                                    old_table=mapping['old_table'],
                                                                    new_app=mapping['new_app'],
                                                                    new_model=mapping['new_model'],
@@ -227,31 +226,34 @@ def map_fields_from_table(apps, schema_editor, mapping_table, exclude_ids=[], so
                                                                    old_value_mapping=mapping['old_value_mapping'],
                                                                    new_value_mapping=mapping['new_value_mapping'],
                                                                    cursor=source_cursor)
-            if new_models:
-                # Filter if required
-                if any(exclude_ids):
-                    new_models = [nm for nm in new_models if nm.id not in exclude_ids]
+            if model_instances:
+                # Filter if required and Exclude None for id - shortcut to excluding objects
+                exclude_ids = mapping.get('exclude_ids', [])
+                model_instances = [nm for nm in model_instances
+                                   if nm.id not in exclude_ids and nm.id is not None]
 
                 # Get new/update models
                 existing_ids = NewModel.objects.all().values_list('id', flat=True)
-                new_models = [nm for nm in new_models if nm.id not in existing_ids]
-                existing_models = [nm for nm in new_models if nm.id in existing_ids]
+                new_models = [nm for nm in model_instances if nm.id not in existing_ids]
+                existing_models = [nm for nm in model_instances if nm.id in existing_ids]
 
                 # Create New Models
                 NewModel.objects.bulk_create(new_models)
 
                 # Overwrite Existing Models if required
-                if overwrite_existing:
-                    update_fields = [f[1] for f in fields_to_migrate]
+                if overwrite_existing and existing_models:
+                    update_fields = [f.name for f in NewModel._meta.fields if f.name != 'id']
                     NewModel.objects.bulk_update(existing_models, update_fields)
 
                 # Update Postgres indexes (auto id) for each table
                 update_indexes(NewModel.objects.model._meta.db_table)
 
-                ret_new_models += new_models
-                ret_existing_models += existing_models
+                new_existing_models[NewModel] = {
+                    'new': new_models,
+                    'existing': existing_models,
+                }
 
-    return ret_new_models, ret_existing_models
+    return new_existing_models
 
 
 def reverse_mapping_remove_all_rows(apps, schema_editor, mapping_table, cursor=None):
