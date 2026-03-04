@@ -6,7 +6,7 @@ def get_cursor():
 
 def fetch_rows_as_dict(cursor=None, table_name=None):
     cursor = cursor or get_cursor()
-    "Return all rows from a cursor as a dict"
+    print("Return all rows from a cursor as a dict")
     if table_name:
         cursor.execute("SELECT * FROM %s" % table_name)
     columns = [col[0] for col in cursor.description]
