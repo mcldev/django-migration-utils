@@ -1,0 +1,45 @@
+Metadata-Version: 2.4
+Name: django_migration_utils
+Version: 2.0.0
+Summary: Django and DjangoCMS Migration Utilities
+Home-page: https://github.com/mcldev/django-migration-utils
+Author: Michael Carder Ltd
+License: MIT License
+Classifier: Environment :: Web Environment
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Framework :: Django
+Classifier: Framework :: Django :: 4.2
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Topic :: Internet :: WWW/HTTP
+Classifier: Topic :: Internet :: WWW/HTTP :: Dynamic Content
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: django<5.0,>=4.2
+Dynamic: author
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: license
+Dynamic: license-file
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+# Django Migration Utils
+
+
+A set of functions for Django and DjangoCMS that assist in more complex migrations.
+
+- Moving data from one table to another. 
+- Renaming and migrating plugins in DjangoCMS
+- Moving between databases
+
+## Updates
+- Please use the code and make a pull request for fixes, extensions, and improvements.
